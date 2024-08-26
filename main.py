@@ -151,8 +151,14 @@ async def monitor_token():
                 for tx in transactions_list:
                     signature = tx.get('signature')
 
+                    if signature is None:
+                        logger.warning(f"Transaction does not have a signature: {tx}")
+                        continue
+
+                    # Check if the signature has already been processed
                     if signature in processed_signatures:
-                        continue  # Skip already processed transactions
+                        logger.debug(f"Transaction {signature} has already been processed. Skipping.")
+                        continue
 
                     caption = process_transaction(tx, price, market_cap)
                     if caption:
@@ -164,7 +170,9 @@ async def monitor_token():
                             logger.error(f"Failed to send Telegram message: {e}")
                             logger.error(f"Caption content: {caption}")  # Log the caption content
 
+                    # Add the signature to the set of processed signatures
                     processed_signatures.add(signature)
+                    logger.debug(f"Added transaction {signature} to processed_signatures set.")
 
                 # Keep only the last 100 processed signatures to save memory
                 if len(processed_signatures) > 100:
@@ -179,6 +187,7 @@ async def monitor_token():
             except Exception as e:
                 logger.error(f"An error occurred: {e}")
                 await asyncio.sleep(60)
+
 
 async def main():
     try:
