@@ -51,87 +51,60 @@ def process_transaction(tx, price, market_cap):
     signature = tx.get('signature')
     timestamp = tx.get('timestamp')
 
-    #Change here -- initiating the receieved amount as 0 can help refine the price in the future by using += token_amount
-    #It seems the main issue is the data isn't consistent with multiple liquidity pools
-    spent_usdc = None
+    spent_usdc = 0
     received_amount = 0
     destination = None
 
     logger.info(f"Processing transaction: {tx}")
 
-    # Handle token transfers
     transfers = tx.get('tokenTransfers', [])
     if not transfers:
         logger.info("No token transfers found in this transaction")
         return None
     
+    is_buy = False
+
     if isinstance(transfers, list):
         for transfer in transfers:
-            # Log the entire transfer object for debugging
-            logger.debug(f"Transfer data: {transfer}")
-
             token_amount = transfer.get('tokenAmount')
-            if token_amount is not 0:
-                token_amount = float(token_amount) / (10 ** transfer.get('decimals', 0))  # Handle decimals properly
-                logger.info(f"Decoded token amount: {token_amount} {transfer.get('mint')}")
+            if token_amount is not None and token_amount != 0:
+                token_amount = float(token_amount) / (10 ** transfer.get('decimals', 0))
 
             mint_address = transfer.get('mint')
-            logger.info(f"Token Transfer - Mint: {mint_address}, Amount: {token_amount}")
 
-            # This is the original code -- APR_TOKEN_MINT is not behaving consistently.
-            # If this can be fixed, += token_amount will work to get the exact amount needed and starting with 0 instead of None will help in this case
-            
-            #if mint_address == APR_TOKEN_MINT:
-             #   received_amount += token_amount
-                # Try to get the destination from different fields
-                #destination = transfer.get('toUserAccount') or transfer.get('to') or transfer.get('destination')
-                #logger.info(f"APR Token received: {received_amount}, Destination: {destination}")
+            if mint_address == APR_TOKEN_MINT:
+                received_amount += token_amount
+                destination = transfer.get('toUserAccount') or transfer.get('to') or transfer.get('destination')
+                is_buy = True  # Mark this as a buy transaction
+                logger.info(f"RAPR Token received: {received_amount}, Destination: {destination}")
 
-            if mint_address == USDC_TOKEN_MINT:
+            elif mint_address == USDC_TOKEN_MINT:
                 spent_usdc = token_amount
-                received_amount = spent_usdc/price
                 logger.info(f"USDC spent: {spent_usdc}")
 
-    if received_amount is None:
-        logger.warning("Received amount is still None after processing the transaction.")
-    else:
-        logger.info(f"Final received_amount: {received_amount}")
-
-    # Calculate the transaction value in USD
-    total_transaction_value = spent_usdc if spent_usdc is not None else 0
-
-    # Check if the total transaction value is at least $150
-    if total_transaction_value < 150:
-        logger.info(f"Transaction value is less than $150, skipping message. Value: ${total_transaction_value:.2f}")
-        return None
-
-    if spent_usdc is not None or received_amount is not None:
+    # If it's a buy, calculate the transaction value and proceed
+    if is_buy and spent_usdc >= 150:
         max_emoji_count = 220
-        dolphin_emoji_usdc = "🐬" * min(int(spent_usdc / 10), max_emoji_count) if spent_usdc is not None else ""
-        dolphin_emoji = dolphin_emoji_usdc
+        dolphin_emoji_usdc = "🐬" * min(int(spent_usdc / 10), max_emoji_count)
 
-        if spent_usdc is not None:
-            caption = (
-                f"Retarded APR Buy with USDC!\n"
-                f"{dolphin_emoji}\n"
-                f"\n"
-                f"🔀 Spent {spent_usdc:.2f} USDC\n"
-                f"🔀 Received {received_amount if received_amount is not None else 'Unknown Amount':.2f} APR\n"
-                f'👤 <a href="https://solscan.io/account/{destination}">Buyer</a> | <a href="https://solscan.io/tx/{signature}">Txn</a>\n'
-                f"💲 RAPR Price: ${price:.4f}\n"
-                f"💸 Market Cap: ${market_cap:,.0f}\n"
-                f"\n"
-                f'📈 <a href="https://dexscreener.com/solana/bcraylvgewjrdwvwj7ftpzy2vxk8gttb9t8w2mcw2bb9">Chart</a> ⏫ <a href="https://x.com/RetardedAPR">Twitter</a> ✳️ <a href="https://www.retardedapr.com/">Website</a>'
-            )
-        else:
-            caption = None  # No relevant pool transaction
+        caption = (
+            f"Retarded APR Buy with USDC!\n"
+            f"{dolphin_emoji_usdc}\n"
+            f"\n"
+            f"🔀 Spent {spent_usdc:.2f} USDC\n"
+            f"🔀 Received {received_amount:.2f} APR\n"
+            f'👤 <a href="https://solscan.io/account/{destination}">Buyer</a> | <a href="https://solscan.io/tx/{signature}">Txn</a>\n'
+            f"💲 RAPR Price: ${price:.4f}\n"
+            f"💸 Market Cap: ${market_cap:,.0f}\n"
+            f"\n"
+            f'📈 <a href="https://dexscreener.com/solana/bcraylvgewjrdwvwj7ftpzy2vxk8gttb9t8w2mcw2bb9">Chart</a> ⏫ <a href="https://x.com/RetardedAPR">Twitter</a> ✳️ <a href="https://www.retardedapr.com/">Website</a>'
+        )
 
-        if caption:
-            logger.info(f"Transfer caption created: {caption}")
-            return caption
-
-    logger.info("No relevant token transfer detected in this transaction")
-    return None
+        logger.info(f"Transfer caption created: {caption}")
+        return caption
+    else:
+        logger.info("No relevant token transfer detected in this transaction or not a buy transaction.")
+        return None
 
 async def monitor_token():
     processed_signatures = set()
@@ -202,7 +175,7 @@ async def monitor_token():
 
 async def main():
     try:
-        await bot.send_message(chat_id=TELEGRAM_CHAT_ID, text="Bot started and connected to Telegram")
+        await bot.send_message(chat_id=TELEGRAM_CHAT_ID, text="Patchfix Test Start")
         logger.info("Test message sent successfully")
     except Exception as e:
         logger.exception(f"Failed to send test message: {e}")
