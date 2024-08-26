@@ -4,6 +4,15 @@ import logging
 from telegram import Bot
 from telegram.constants import ParseMode
 
+# Variables
+pools = ["BcRAYLvgeWjrDwVWj7Ftpzy2vxK8GTTB9t8w2mcw2bB9"] # Additional Pools # "835MjqJNZm8rNDvuV87By7W1ynK1PSSZek3HEVD4jrqA","GQAC4vKAjSri8cUp7LATTVQvFCsvDKZyCiE5Su5gsCBe","44LTQiyX1Bc8RAtVT4jKMMhi6F6zFhh83d9jrieBRVpp","4xRwoJRMHCYDPLWRsLgwYgefPaGs9c3TetsgQSTezXsj"
+show_buy_amt = 10
+
+# Emoji Variables
+max_emoji_count = 220
+dollars_per_emoji = 10
+emoji = "🐬"
+
 # Set up logging
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -49,52 +58,72 @@ async def get_token_data():
 
 def process_transaction(tx, price, market_cap):
     signature = tx.get('signature')
-    timestamp = tx.get('timestamp')
 
     spent_usdc = 0
     received_amount = 0
     destination = None
 
-    logger.info(f"Processing transaction: {tx}")
+    # logger.info(f"Processing transaction: {tx}")
 
     transfers = tx.get('tokenTransfers', [])
     if not transfers:
         logger.info("No token transfers found in this transaction")
         return None
     
-    is_buy = False
+    logger.info(f"Processing transfer.")
 
-    if isinstance(transfers, list):
-        for transfer in transfers:
-            token_amount = transfer.get('tokenAmount')
-            if token_amount is not None and token_amount != 0:
-                token_amount = float(token_amount) / (10 ** transfer.get('decimals', 0))
+    # Extract token balance changes for the specific mint address
+    target_mint = "RAPRz9fd87y9qcBGj1VVqUbbUM6DaBggSDA58zc3N2b"
+    balance_changes = []
 
-            mint_address = transfer.get('mint')
+    # Iterate over the account data to find token balance changes
+    for account in tx.get('accountData', []):
+        for token_change in account.get('tokenBalanceChanges', []):
+            if token_change.get('mint') == target_mint:
+                balance_changes.append({
+                    'userAccount': token_change.get('userAccount'),
+                    'tokenAccount': token_change.get('tokenAccount'),
+                    'rawTokenAmount': token_change.get('rawTokenAmount'),
+                    'mint': token_change.get('mint')
+                })
 
-            if mint_address == APR_TOKEN_MINT:
-                received_amount += token_amount
-                destination = transfer.get('toUserAccount') or transfer.get('to') or transfer.get('destination')
-                is_buy = True  # Mark this as a buy transaction
-                logger.info(f"RAPR Token received: {received_amount}, Destination: {destination}")
+    # Log the token balance changes if userAccount is in pools
+    for change in balance_changes:
+        user_account = change['userAccount']
+        raw_token_amount = change['rawTokenAmount']['tokenAmount']
+        decimals = change['rawTokenAmount']['decimals']
+        
+        
+        if user_account in pools:
+            if float(raw_token_amount) < 0:
+                logger.info(f"User Account: {change['userAccount']}")
+                logger.info(f"Token Account: {change['tokenAccount']}")
+                logger.info(f"Token Amount: {change['rawTokenAmount']['tokenAmount']}")
+                logger.info(f"Decimals: {change['rawTokenAmount']['decimals']}")
+                logger.info(f"Mint: {change['mint']}")
+                is_buy = True
+                received_amount = abs(float(raw_token_amount)) / (10 ** decimals)
+                spent_usdc = received_amount*price
+                logger.info("-" * 40)
+            else:
+                is_buy = False
+                logger.info('TX not a buy.')
+        else:
+            logger.info("TX not from pool.")
+            is_buy = False
 
-            elif mint_address == USDC_TOKEN_MINT:
-                spent_usdc = token_amount
-                logger.info(f"USDC spent: {spent_usdc}")
-
-    # If it's a buy, calculate the transaction value and proceed
-    if is_buy and spent_usdc >= 150:
-        max_emoji_count = 220
-        dolphin_emoji_usdc = "🐬" * min(int(spent_usdc / 10), max_emoji_count)
+    if is_buy and spent_usdc >= show_buy_amt:
+        
+        emoji_usdc = emoji * min(int(spent_usdc / dollars_per_emoji), max_emoji_count)
 
         caption = (
             f"Retarded APR Buy with USDC!\n"
-            f"{dolphin_emoji_usdc}\n"
+            f"{emoji_usdc}\n"
             f"\n"
             f"🔀 Spent {spent_usdc:.2f} USDC\n"
             f"🔀 Received {received_amount:.2f} APR\n"
             f'👤 <a href="https://solscan.io/account/{destination}">Buyer</a> | <a href="https://solscan.io/tx/{signature}">Txn</a>\n'
-            f"💲 RAPR Price: ${price:.4f}\n"
+            f"💲 RAPR Price: ${price:.2f}\n"
             f"💸 Market Cap: ${market_cap:,.0f}\n"
             f"\n"
             f'📈 <a href="https://dexscreener.com/solana/bcraylvgewjrdwvwj7ftpzy2vxk8gttb9t8w2mcw2bb9">Chart</a> ⏫ <a href="https://x.com/RetardedAPR">Twitter</a> ✳️ <a href="https://www.retardedapr.com/">Website</a>'
@@ -103,8 +132,9 @@ def process_transaction(tx, price, market_cap):
         logger.info(f"Transfer caption created: {caption}")
         return caption
     else:
-        logger.info("No relevant token transfer detected in this transaction or not a buy transaction.")
         return None
+
+
 
 async def monitor_token():
     processed_signatures = set()
@@ -122,7 +152,7 @@ async def monitor_token():
                 response.raise_for_status()
                 transactions = response.json()
 
-                logger.info(f"Received response: {transactions}")
+                #logger.info(f"Received response: {transactions}")
 
                 if isinstance(transactions, dict):
                     transactions_list = transactions.get('transactions', [])
@@ -138,6 +168,8 @@ async def monitor_token():
                     if signature is None:
                         logger.warning(f"Transaction does not have a signature: {tx}")
                         continue
+
+                    logger.debug(signature)
 
                     # Check if the signature has already been processed
                     if signature in processed_signatures:
@@ -175,7 +207,7 @@ async def monitor_token():
 
 async def main():
     try:
-        await bot.send_message(chat_id=TELEGRAM_CHAT_ID, text="Patchfix Test Start")
+        await bot.send_message(chat_id=TELEGRAM_CHAT_ID, text="Patchfix -- Bot Test Start")
         logger.info("Test message sent successfully")
     except Exception as e:
         logger.exception(f"Failed to send test message: {e}")
