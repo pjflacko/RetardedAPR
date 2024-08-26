@@ -6,7 +6,7 @@ from telegram.constants import ParseMode
 
 # Variables
 pools = ["BcRAYLvgeWjrDwVWj7Ftpzy2vxK8GTTB9t8w2mcw2bB9"] # Additional Pools # "835MjqJNZm8rNDvuV87By7W1ynK1PSSZek3HEVD4jrqA","GQAC4vKAjSri8cUp7LATTVQvFCsvDKZyCiE5Su5gsCBe","44LTQiyX1Bc8RAtVT4jKMMhi6F6zFhh83d9jrieBRVpp","4xRwoJRMHCYDPLWRsLgwYgefPaGs9c3TetsgQSTezXsj"
-show_buy_amt = 10
+show_buy_amt = 150
 
 # Emoji Variables
 max_emoji_count = 220
@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 # Replace with your actual bot token and chat ID
 TELEGRAM_BOT_TOKEN = '7518581649:AAHxo3YOE4JOpLmFpTG_iPRDEFSUMsFOUlg'
-TELEGRAM_CHAT_ID = '-4571973740'
+TELEGRAM_CHAT_ID = '-1002248631555'
 
 # Initialize the Telegram bot
 bot = Bot(token=TELEGRAM_BOT_TOKEN)
@@ -59,6 +59,7 @@ async def get_token_data():
 def process_transaction(tx, price, market_cap):
     signature = tx.get('signature')
 
+    is_buy = False
     spent_usdc = 0
     received_amount = 0
     destination = None
