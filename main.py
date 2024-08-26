@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 # Replace with your actual bot token and chat ID
 TELEGRAM_BOT_TOKEN = '7518581649:AAHxo3YOE4JOpLmFpTG_iPRDEFSUMsFOUlg'
-TELEGRAM_CHAT_ID = '-1002248631555'
+TELEGRAM_CHAT_ID = '-4571973740'
 
 # Initialize the Telegram bot
 bot = Bot(token=TELEGRAM_BOT_TOKEN)
