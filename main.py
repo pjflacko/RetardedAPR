@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 # Replace with your actual bot token and chat ID
 TELEGRAM_BOT_TOKEN = '7518581649:AAHxo3YOE4JOpLmFpTG_iPRDEFSUMsFOUlg'
-TELEGRAM_CHAT_ID = '-4571973740'
+TELEGRAM_CHAT_ID = '-1002248631555'
 
 # Initialize the Telegram bot
 bot = Bot(token=TELEGRAM_BOT_TOKEN)
@@ -29,6 +29,9 @@ USDC_TOKEN_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
 PHOTO_URL = 'https://ibb.co/bs4m9qV'
 
 DEX_SCREENER_API_URL = "https://api.dexscreener.com/latest/dex/pairs/solana/BcRAYLvgeWjrDwVWj7Ftpzy2vxK8GTTB9t8w2mcw2bB9"
+
+# Set to track processed signatures
+processed_signatures = set()
 
 async def get_token_data():
     async with httpx.AsyncClient() as client:
@@ -52,40 +55,34 @@ def process_transaction(tx, price, market_cap):
     timestamp = tx.get('timestamp')
 
     spent_usdc = None
-    received_amount = None
+    received_amount = 0
     destination = None
 
     logger.info(f"Processing transaction: {tx}")
 
     # Handle token transfers
     transfers = tx.get('tokenTransfers', [])
-    if isinstance(transfers, list):
-        for transfer in transfers:
-            # Log the entire transfer object for debugging
-            logger.debug(f"Transfer data: {transfer}")
+    if not transfers:
+        logger.info("No token transfers found in this transaction")
+        return None
 
-            token_amount = transfer.get('tokenAmount')
-            if token_amount is not None:
-                token_amount = float(token_amount) / (10 ** transfer.get('decimals', 0))  # Handle decimals properly
-                logger.info(f"Decoded token amount: {token_amount} {transfer.get('mint')}")
+    for transfer in transfers:
+        token_amount = transfer.get('tokenAmount')
+        if token_amount:
+            token_amount = float(token_amount) / (10 ** transfer.get('decimals', 0))  # Handle decimals properly
+            logger.info(f"Decoded token amount: {token_amount} {transfer.get('mint')}")
 
-            mint_address = transfer.get('mint')
-            logger.info(f"Token Transfer - Mint: {mint_address}, Amount: {token_amount}")
+        mint_address = transfer.get('mint')
+        logger.info(f"Token Transfer - Mint: {mint_address}, Amount: {token_amount}")
 
-            if mint_address == APR_TOKEN_MINT:
-                received_amount = token_amount
-                # Try to get the destination from different fields
-                destination = transfer.get('toUserAccount') or transfer.get('to') or transfer.get('destination')
-                logger.info(f"APR Token received: {received_amount}, Destination: {destination}")
+        if mint_address == USDC_TOKEN_MINT:
+            spent_usdc = token_amount
+            received_amount = spent_usdc / price
+            logger.info(f"USDC spent: {spent_usdc}")
 
-            elif mint_address == USDC_TOKEN_MINT:
-                spent_usdc = token_amount
-                logger.info(f"USDC spent: {spent_usdc}")
-
-    if received_amount is None:
-        logger.warning("Received amount is still None after processing the transaction.")
-    else:
-        logger.info(f"Final received_amount: {received_amount}")
+    if received_amount == 0:
+        logger.warning("No relevant APR token received.")
+        return None
 
     # Calculate the transaction value in USD
     total_transaction_value = spent_usdc if spent_usdc is not None else 0
@@ -96,16 +93,17 @@ def process_transaction(tx, price, market_cap):
         return None
 
     if spent_usdc is not None or received_amount is not None:
-        dolphin_emoji_usdc = "🐬" * int(spent_usdc / 10) if spent_usdc is not None else ""
+        max_emoji_count = 220
+        dolphin_emoji_usdc = "🐬" * min(int(spent_usdc / 10), max_emoji_count) if spent_usdc is not None else ""
         dolphin_emoji = dolphin_emoji_usdc
 
         if spent_usdc is not None:
             caption = (
-                f"Retarded APR Buy with USDC!\n"
+                f"Retarded APR Buy!\n"
                 f"{dolphin_emoji}\n"
                 f"\n"
-                f"🔀 Spent {spent_usdc} USDC\n"
-                f"🔀 Received {received_amount if received_amount is not None else 'Unknown Amount'} APR\n"
+                f"🔀 Spent {spent_usdc:.2f} USDC\n"
+                f"🔀 Received {received_amount if received_amount is not None else 'Unknown Amount':.2f} APR\n"
                 f'👤 <a href="https://solscan.io/account/{destination}">Buyer</a> | <a href="https://solscan.io/tx/{signature}">Txn</a>\n'
                 f"💲 RAPR Price: ${price:.4f}\n"
                 f"💸 Market Cap: ${market_cap:,.0f}\n"
@@ -123,7 +121,7 @@ def process_transaction(tx, price, market_cap):
     return None
 
 async def monitor_token():
-    processed_signatures = set()
+    global processed_signatures  # Ensure we reference the correct processed_signatures set
     async with httpx.AsyncClient() as client:
         while True:
             try:
@@ -191,7 +189,7 @@ async def monitor_token():
 
 async def main():
     try:
-        await bot.send_message(chat_id=TELEGRAM_CHAT_ID, text="Bot started and connected to Telegram")
+        await bot.send_message(chat_id=TELEGRAM_CHAT_ID, text="Start")
         logger.info("Test message sent successfully")
     except Exception as e:
         logger.exception(f"Failed to send test message: {e}")
