@@ -6,7 +6,7 @@ from telegram.constants import ParseMode
 
 # Variables
 pools = ["BcRAYLvgeWjrDwVWj7Ftpzy2vxK8GTTB9t8w2mcw2bB9"] # Additional Pools # "835MjqJNZm8rNDvuV87By7W1ynK1PSSZek3HEVD4jrqA","GQAC4vKAjSri8cUp7LATTVQvFCsvDKZyCiE5Su5gsCBe","44LTQiyX1Bc8RAtVT4jKMMhi6F6zFhh83d9jrieBRVpp","4xRwoJRMHCYDPLWRsLgwYgefPaGs9c3TetsgQSTezXsj"
-show_buy_amt = 150
+show_buy_amt = 50
 
 # Emoji Variables
 max_emoji_count = 220
@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 # Replace with your actual bot token and chat ID
 TELEGRAM_BOT_TOKEN = '7518581649:AAHxo3YOE4JOpLmFpTG_iPRDEFSUMsFOUlg'
-TELEGRAM_CHAT_ID = '-1002248631555'
+TELEGRAM_CHAT_ID = '-4571973740' # '-1002248631555'
 
 # Initialize the Telegram bot
 bot = Bot(token=TELEGRAM_BOT_TOKEN)
@@ -38,6 +38,11 @@ USDC_TOKEN_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
 PHOTO_URL = 'https://ibb.co/bs4m9qV'
 
 DEX_SCREENER_API_URL = "https://api.dexscreener.com/latest/dex/pairs/solana/BcRAYLvgeWjrDwVWj7Ftpzy2vxK8GTTB9t8w2mcw2bB9"
+
+signature_list = []
+
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.DEBUG)
+
 
 async def get_token_data():
     async with httpx.AsyncClient() as client:
@@ -64,14 +69,14 @@ def process_transaction(tx, price, market_cap):
     received_amount = 0
     destination = None
 
-    # logger.info(f"Processing transaction: {tx}")
+    logger.info('Processing transaction: {tx}')
 
     transfers = tx.get('tokenTransfers', [])
     if not transfers:
         logger.info("No token transfers found in this transaction")
         return None
     
-    logger.info(f"Processing transfer.")
+    logger.info("Processing transfer.")
 
     # Extract token balance changes for the specific mint address
     target_mint = "RAPRz9fd87y9qcBGj1VVqUbbUM6DaBggSDA58zc3N2b"
@@ -94,7 +99,6 @@ def process_transaction(tx, price, market_cap):
         raw_token_amount = change['rawTokenAmount']['tokenAmount']
         decimals = change['rawTokenAmount']['decimals']
         
-        
         if user_account in pools:
             if float(raw_token_amount) < 0:
                 logger.info(f"User Account: {change['userAccount']}")
@@ -114,31 +118,38 @@ def process_transaction(tx, price, market_cap):
             is_buy = False
 
     if is_buy and spent_usdc >= show_buy_amt:
-        
-        emoji_usdc = emoji * min(int(spent_usdc / dollars_per_emoji), max_emoji_count)
 
-        caption = (
-            f"Retarded APR Buy with USDC!\n"
-            f"{emoji_usdc}\n"
-            f"\n"
-            f"🔀 Spent {spent_usdc:.2f} USDC\n"
-            f"🔀 Received {received_amount:.2f} APR\n"
-            f'👤 <a href="https://solscan.io/account/{destination}">Buyer</a> | <a href="https://solscan.io/tx/{signature}">Txn</a>\n'
-            f"💲 RAPR Price: ${price:.2f}\n"
-            f"💸 Market Cap: ${market_cap:,.0f}\n"
-            f"\n"
-            f'📈 <a href="https://dexscreener.com/solana/bcraylvgewjrdwvwj7ftpzy2vxk8gttb9t8w2mcw2bb9">Chart</a> ⏫ <a href="https://x.com/RetardedAPR">Twitter</a> ✳️ <a href="https://www.retardedapr.com/">Website</a>'
-        )
+        if signature in signature_list:
+            logger.info("Duplicate Siganture Found - Skip")
+            return None
+        else:
 
-        logger.info(f"Transfer caption created: {caption}")
-        return caption
+            if len(signature_list) > 100:
+               signature_list.pop(0)
+            
+            signature_list.append(signature)        
+            
+            emoji_usdc = emoji * min(int(spent_usdc / dollars_per_emoji), max_emoji_count)
+
+            caption = (
+                f"Retarded APR Buy with USDC!\n"
+                f"{emoji_usdc}\n"
+                f"\n"
+                f"🔀 Spent {spent_usdc:.2f} USDC\n"
+                f"🔀 Received {received_amount:.2f} APR\n"
+                f'👤 <a href="https://solscan.io/account/{destination}">Buyer</a> | <a href="https://solscan.io/tx/{signature}">Txn</a>\n'
+                f"💲 RAPR Price: ${price:.2f}\n"
+                f"💸 Market Cap: ${market_cap:,.0f}\n"
+                f"\n"
+                f'📈 <a href="https://dexscreener.com/solana/bcraylvgewjrdwvwj7ftpzy2vxk8gttb9t8w2mcw2bb9">Chart</a> ⏫ <a href="https://x.com/RetardedAPR">Twitter</a> ✳️ <a href="https://www.retardedapr.com/">Website</a>'
+            )
+
+            logger.info(f"Transfer caption created: {caption}")
+            return caption
     else:
         return None
 
-
-
 async def monitor_token():
-    processed_signatures = set()
     async with httpx.AsyncClient() as client:
         while True:
             try:
@@ -153,7 +164,7 @@ async def monitor_token():
                 response.raise_for_status()
                 transactions = response.json()
 
-                #logger.info(f"Received response: {transactions}")
+                # logger.info(f"Received response: {transactions}")
 
                 if isinstance(transactions, dict):
                     transactions_list = transactions.get('transactions', [])
@@ -162,21 +173,10 @@ async def monitor_token():
 
                 if not transactions_list:
                     logger.info("No transactions found")
+                    await asyncio.sleep(10)
+                    continue
 
                 for tx in transactions_list:
-                    signature = tx.get('signature')
-
-                    if signature is None:
-                        logger.warning(f"Transaction does not have a signature: {tx}")
-                        continue
-
-                    logger.debug(signature)
-
-                    # Check if the signature has already been processed
-                    if signature in processed_signatures:
-                        logger.debug(f"Transaction {signature} has already been processed. Skipping.")
-                        continue
-
                     caption = process_transaction(tx, price, market_cap)
                     if caption:
                         logger.info(f"Sending photo with caption to Telegram")
@@ -186,14 +186,6 @@ async def monitor_token():
                         except Exception as e:
                             logger.error(f"Failed to send Telegram message: {e}")
                             logger.error(f"Caption content: {caption}")  # Log the caption content
-
-                    # Add the signature to the set of processed signatures
-                    processed_signatures.add(signature)
-                    logger.debug(f"Added transaction {signature} to processed_signatures set.")
-
-                # Keep only the last 100 processed signatures to save memory
-                if len(processed_signatures) > 100:
-                    processed_signatures = set(list(processed_signatures)[-100:])
 
                 await asyncio.sleep(10)
 
@@ -205,10 +197,9 @@ async def monitor_token():
                 logger.error(f"An error occurred: {e}")
                 await asyncio.sleep(60)
 
-
 async def main():
     try:
-        await bot.send_message(chat_id=TELEGRAM_CHAT_ID, text="Patchfix -- Bot Test Start")
+        await bot.send_message(chat_id=TELEGRAM_CHAT_ID, text="PatchFix Test -- Show Buys From: ${show_buy_amt}")
         logger.info("Test message sent successfully")
     except Exception as e:
         logger.exception(f"Failed to send test message: {e}")
