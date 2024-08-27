@@ -199,7 +199,7 @@ async def monitor_token():
 
 async def main():
     try:
-        await bot.send_message(chat_id=TELEGRAM_CHAT_ID, text="PatchFix Test -- Show Buys From: ${show_buy_amt}")
+        await bot.send_message(chat_id=TELEGRAM_CHAT_ID, text="Starting RAPR Buy Bot!")
         logger.info("Test message sent successfully")
     except Exception as e:
         logger.exception(f"Failed to send test message: {e}")
